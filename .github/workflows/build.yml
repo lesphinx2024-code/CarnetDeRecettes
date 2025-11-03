@@ -1,0 +1,74 @@
+name: Build Multi-Platform
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executables
+        run: |
+          pyinstaller --noconfirm --onefile --windowed recette.py --name "CarnetDeRecettes"
+
+      - name: Package Linux AppImage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p dist/AppImage
+          cp dist/CarnetDeRecettes dist/AppImage/
+          cd dist/AppImage
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          mkdir -p AppDir/usr/bin
+          cp CarnetDeRecettes AppDir/usr/bin/
+          echo "[Desktop Entry]
+          Name=Carnet de Recettes
+          Exec=CarnetDeRecettes
+          Icon=utilities-text-editor
+          Type=Application
+          Categories=Utility;" > AppDir/carnet.desktop
+          ./appimagetool-x86_64.AppImage AppDir CarnetDeRecettes.AppImage
+
+      - name: Package on Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          Compress-Archive -Path dist\CarnetDeRecettes.exe -DestinationPath CarnetDeRecettes_Windows.zip
+
+      - name: Package on macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p dist/dmg
+          cp dist/CarnetDeRecettes dist/dmg/CarnetDeRecettes
+          hdiutil create -volname "CarnetDeRecettes" -srcfolder dist/dmg -ov -format UDZO CarnetDeRecettes.dmg
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CarnetDeRecettes-${{ matrix.os }}
+          path: |
+            dist/CarnetDeRecettes*
+            dist/*.AppImage
+            *.zip
+            *.dmg
